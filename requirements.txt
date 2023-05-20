@@ -11,6 +11,8 @@ id, name, books[]
 
 we have to design an API over this.
 
+***get***
+
 1.BOOKS
 we need an API :-
     to get all the books ✅
@@ -30,3 +32,21 @@ we need an API :-
     to get a specific publication ✅
     to get a list of publications based on books ✅
 
+
+
+***POST***
+
+add a new book ✅
+add a new author ✅
+add a new publication ✅
+
+
+****put****
+
+update book dwtails if author is changed ✅
+
+****delete****
+
+delete a book ✅
+delete author from book ✅
+delete author from book and related book from author ✅
