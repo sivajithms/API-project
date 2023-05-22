@@ -18,7 +18,7 @@ const BookModel = require('./database/book')
 const AuthorModel = require('./database/author')
 const PublicationModel = require('./database/publications')
 
-
+//database connect
 
 mongoose.connect(process.env.MONGO_URL, {
     useNewUrlParser: true,
@@ -104,11 +104,10 @@ acces               public
 parameter           id
 method              get
 */
-app.get('/author/:id', (req, res) => {
-    const authId = parseInt(req.params.id)
-    const getSpecificAuthor = db.author.filter((author) => author.id === authId)
-    if (getSpecificAuthor.length === 0) {
-        return res.json({ error: `no author found for the id of ${authId}` })
+app.get('/author/:id', async (req, res) => {
+    const getSpecificAuthor = await AuthorModel.findOne({ id: parseInt(req.params.id) })
+    if (!getSpecificAuthor) {
+        return res.json({ error: `no author found for the id of ${req.params.id}` })
     }
     return res.json({ book: getSpecificAuthor })
 })
@@ -120,12 +119,16 @@ acces               public
 parameter           isbn
 method              get
 */
-app.get('/author/book/:isbn', (req, res) => {
-    const getSpecificAuthor = db.author.filter((author) => author.books.includes(req.params.isbn))
-    if (getSpecificAuthor.length === 0) {
-        return res.json({ error: `no author found for the book of ${req.params.isbn}` })
+app.get('/author/book/:isbn', async (req, res) => {
+    try {
+        const getSpecificAuthor = await AuthorModel.find({ books: req.params.isbn }).exec();
+        if (getSpecificAuthor.length === 0) {
+            return res.json({ error: `No author found for the book with ISBN ${req.params.isbn}` });
+        }
+        return res.json({ author: getSpecificAuthor });
+    } catch (err) {
+        return res.status(500).json({ error: 'An error occurred while retrieving the author' });
     }
-    return res.json({ author: getSpecificAuthor })
 })
 
 /* 
@@ -147,12 +150,12 @@ acces               public
 parameter           id
 method              get
 */
-app.get('/publications/:id', (req, res) => {
-    const getSpecificPublications = db.publications.filter((publications) => publications.id === parseInt(req.params.id))
-    if (getSpecificPublications.length === 0) {
-        return res.json({ error: `no publications found for the id of ${parseInt(req.params.id)}` })
+app.get('/publication/:id', async (req, res) => {
+    const getSpecificPublication = await PublicationModel.findOne({ id: parseInt(req.params.id) })
+    if (!getSpecificPublication) {
+        return res.json({ error: `no publication found for the id of ${req.params.id}` })
     }
-    return res.json({ publications: getSpecificPublications })
+    return res.json({ book: getSpecificPublication })
 })
 
 /* 
@@ -162,16 +165,20 @@ acces               public
 parameter           isbn
 method              get
 */
-app.get('/publications/book/:isbn', (req, res) => {
-    const getSpecificPublications = db.publications.filter((publications) => publications.books.includes(req.params.isbn))
-    if (getSpecificPublications.length === 0) {
-        return res.json({ error: `no publications found for the book of ${req.params.isbn}` })
+app.get('/publications/book/:isbn', async (req, res) => {
+    try {
+        const getSpecificPublication = await PublicationModel.findOne({ books: req.params.isbn }).exec();
+        if (!getSpecificPublication) {
+            return res.json({ error: `No publication found for the book with ISBN ${req.params.isbn}` });
+        }
+        return res.json({ publication: getSpecificPublication });
+    } catch (err) {
+        return res.status(500).json({ error: 'An error occurred while retrieving the publication' });
     }
-    return res.json({ publications: getSpecificPublications })
 })
 
 
-//POST
+/****POST****/
 
 /* 
 route               /book/new
@@ -253,21 +260,32 @@ parameter           none
 method              post
 */
 
-app.post('/publication/new', (req, res) => {
-    const newPublication = req.body;
-    var isPublicaton, publicationIndex
-    db.publications.forEach((data, i) => {
-        if (data.id === newPublication.id) {
-            isPublicaton = true;
-            publicationIndex = i;
-        }
-    })
-    if (isPublicaton) {
-        db.publications[publicationIndex] = newPublication;
+app.post('/publication/new', async (req, res) => {
+    const { newPublication } = req.body
+    const isPublication = await PublicationModel.findOne({ id: newPublication.id })
+    if (!isPublication) {
+        const addnewPublication = PublicationModel.create(newPublication).then(() => {
+            return res.json({
+                publication: addnewPublication,
+                message: 'new publication added'
+            })
+        }).catch(() => {
+            return res.json({
+                message: 'new publication not added'
+            })
+        })
     } else {
-        db.publications.push(newPublication)
+        const updatePublication = PublicationModel.updateOne(newPublication)
+            .then(() => {
+                return res.json({
+                    publication: updatePublication,
+                    message: 'publication updated'
+                })
+            })
+            .catch(() => {
+                return res.json({ error: "publication not updated" })
+            });
     }
-    return res.json({ updatedpublications: db.publications })
 })
 
 
@@ -281,25 +299,43 @@ parameter           isbn
 method              PUT
 */
 
-app.put('/publication/update/book/:isbn', (req, res) => {
-    db.publications.forEach((pub) => {
-        if (pub.id === req.body.pubId) {
-            return pub.books.push(req.params.isbn)
+app.put('/publication/update/book/:isbn', async (req, res) => {
+    console.log(req.params.isbn, req.body.pubId);
+    const updatePublication = await PublicationModel.findOneAndUpdate(
+        {
+            id: req.body.pubId
+        },
+        {
+            $addToSet: {
+                books: req.params.isbn
+            }
+        },
+        {
+            new: true
         }
-    });
+    ).catch((err) => {
+        console.log(err);
+    })
 
-    db.books.forEach((book) => {
-        if (book.ISBN === req.params.isbn) {
-            book.publications = req.body.pubId
-            return
+    const updateBook = await BookModel.findOneAndUpdate(
+        {
+            ISBN: req.params.isbn
+        },
+        {
+
+            publications: req.body.pubId
+
+        },
+        {
+            new: true
         }
-    });
-    return res.json({ books: db.books, publications: db.publications, message: "succesfuly updated publications" })
+    )
+    return res.json({ books: updateBook, publications: updatePublication, message: "succesfuly updated publications" })
 });
 
 
 /* 
-route               /book/update/
+route               /book/update/ 
 desccription        update new book
 acces               public  
 parameter           isbn
@@ -335,15 +371,15 @@ app.put('/book/author/update/:isbn', async (req, res) => {
     //update book database
     const updateBook = await BookModel.findOneAndUpdate(
         {
-            ISBN:req.params.isbn
+            ISBN: req.params.isbn
         },
         {
-            $addToSet:{
-                authors:req.body.newAuthor
+            $addToSet: {
+                authors: req.body.newAuthor
             }
         },
         {
-            new : true
+            new: true
         }
     );
 
@@ -351,22 +387,22 @@ app.put('/book/author/update/:isbn', async (req, res) => {
 
     const updateAuthor = await AuthorModel.findOneAndUpdate(
         {
-            id:req.body.newAuthor
+            id: req.body.newAuthor
         },
         {
-            $addToSet:{
-                books:req.params.isbn
+            $addToSet: {
+                books: req.params.isbn
             }
         },
         {
-            new : true
+            new: true
         }
     );
 
     return res.json({
         books: updateBook,
-        author:updateAuthor,
-        message:'new author has added'
+        author: updateAuthor,
+        message: 'new author has added'
     })
 })
 
@@ -380,14 +416,14 @@ parameter           isbn
 method              DELETE
 */
 
-app.delete('/book/delete/:isbn', async(req, res) => {
+app.delete('/book/delete/:isbn', async (req, res) => {
     const deleteBook = await BookModel.findOneAndDelete(
         {
-            ISBN:req.params.isbn
+            ISBN: req.params.isbn
         }
     );
     return res.json({
-        books:deleteBook
+        books: deleteBook
     })
 });
 
@@ -399,25 +435,39 @@ parameter           isbn, authorId
 method              DELETE
 */
 
-app.delete('/book/delete/author/:isbn/:authorId', (req, res) => {
-    db.books.forEach((book) => {
-        if (book.ISBN === req.params.isbn) {
-            const newAuthorList = book.author.filter((author) => author !== parseInt(req.params.authorId))
-            book.author = newAuthorList;
-            return;
-        }
-    });
+app.delete('/book/delete/author/:isbn/:authorId', async (req, res) => {
 
-    db.author.forEach((author) => {
-        if (author.id === parseInt(req.params.authorId)) {
-            const newBookList = author.books.filter((book) => book !== req.params.isbn)
-            author.books = newBookList;
-            return
+    const deleteAuthor = await BookModel.findOneAndUpdate(
+        {
+            ISBN: req.params.isbn
+        },
+        {
+            $pull: {
+                author: parseInt(req.params.authorId)
+            }
+        },
+        {
+            new: true
         }
-    });
+    )
+
+
+    const deleteBook = await AuthorModel.findOneAndUpdate(
+        {
+            id: parseInt(req.params.authorId)
+        },
+        {
+            $pull: {
+                books: req.params.isbn
+            }
+        },
+        {
+            new: true
+        }
+    )
     return res.json({
-        book: db.books,
-        author: db.author,
+        book: deleteAuthor,
+        author: deleteBook,
         message: "author was deleted"
     })
 });
